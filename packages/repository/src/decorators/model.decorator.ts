@@ -87,6 +87,14 @@ export function buildModelDefinition(
     const propertyDef = propertyMap[p];
     const designType = MetadataInspector.getDesignTypeForProperty(prototype, p);
     if (!propertyDef.type) {
+      if (!designType) {
+        throw new Error(
+          `The definition of model property ${modelDef.name}.${p} is missing ` +
+            '`type` field and TypeScript compiler option `emitDecoratorMetadata` ' +
+            'is not set. Please enable `emitDecoratorMetadata` or specify ' +
+            'the type explicitly.',
+        );
+      }
       propertyDef.type = designType;
     }
     modelDef.addProperty(p, propertyDef);
