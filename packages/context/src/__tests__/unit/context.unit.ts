@@ -813,6 +813,93 @@ describe('Context', () => {
       // retrieve the full object again (verify that cache was not modified)
       expect(ctx.getSync('state')).to.deepEqual({count: 1});
     });
+
+    it('honours APPLICATION scope when retrieving a nested property', () => {
+      const state = {count: 0};
+      ctx.scope = BindingScope.APPLICATION;
+      ctx
+        .bind('state')
+        .toDynamicValue(() => {
+          state.count++;
+          return state;
+        })
+        .inScope(BindingScope.APPLICATION);
+
+      // verify the initial state & populate the cache
+      expect(ctx.getSync('state')).to.deepEqual({count: 1});
+
+      // retrieve a nested property from a child context
+      const childContext1 = new Context(ctx);
+      expect(childContext1.getValueOrPromise('state#count')).to.equal(1);
+
+      // retrieve a nested property from another child context
+      const childContext2 = new Context(ctx);
+      expect(childContext2.getValueOrPromise('state#count')).to.equal(1);
+
+      // retrieve the full object again (verify that cache was not modified)
+      expect(ctx.getSync('state')).to.deepEqual({count: 1});
+    });
+  });
+
+  it('honours SERVER scope when retrieving a nested property', () => {
+    const state = {count: 0};
+    ctx.scope = BindingScope.APPLICATION;
+    ctx
+      .bind('state')
+      .toDynamicValue(() => {
+        state.count++;
+        return state;
+      })
+      .inScope(BindingScope.SERVER);
+
+    // Cannot be resolved in the app
+    expect(() => ctx.getSync('state')).to.throw(
+      /Binding scope Server cannot be resolved in context app/,
+    );
+
+    const serverCtx = new Context(ctx);
+    serverCtx.scope = BindingScope.SERVER;
+
+    // retrieve a nested property from a child context
+    const childContext1 = new Context(serverCtx);
+    expect(childContext1.getValueOrPromise('state#count')).to.equal(1);
+
+    // retrieve a nested property from another child context
+    const childContext2 = new Context(serverCtx);
+    expect(childContext2.getValueOrPromise('state#count')).to.equal(1);
+
+    // retrieve the full object again (verify that cache was not modified)
+    expect(serverCtx.getSync('state')).to.deepEqual({count: 1});
+  });
+
+  it('honours REQUEST scope when retrieving a nested property', () => {
+    const state = {count: 0};
+    ctx.scope = BindingScope.SERVER;
+    ctx
+      .bind('state')
+      .toDynamicValue(() => {
+        state.count++;
+        return state;
+      })
+      .inScope(BindingScope.REQUEST);
+
+    expect(() => ctx.getSync('state')).to.throw(
+      /Binding scope Request cannot be resolved in context app/,
+    );
+
+    const requestCtx = new Context(ctx);
+    requestCtx.scope = BindingScope.REQUEST;
+
+    // retrieve a nested property from a child context
+    const childContext1 = new Context(requestCtx);
+    expect(childContext1.getValueOrPromise('state#count')).to.equal(1);
+
+    // retrieve a nested property from another child context
+    const childContext2 = new Context(requestCtx);
+    expect(childContext2.getValueOrPromise('state#count')).to.equal(1);
+
+    // retrieve the full object again (verify that cache was not modified)
+    expect(requestCtx.getSync('state')).to.deepEqual({count: 1});
   });
 
   describe('close()', () => {

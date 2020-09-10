@@ -5,7 +5,12 @@
 
 import debugFactory, {Debugger} from 'debug';
 import {EventEmitter} from 'events';
-import {Binding, BindingInspectOptions, BindingTag} from './binding';
+import {
+  Binding,
+  BindingInspectOptions,
+  BindingScope,
+  BindingTag,
+} from './binding';
 import {
   ConfigurationResolver,
   DefaultConfigurationResolver,
@@ -90,6 +95,11 @@ export class Context extends EventEmitter {
    * ```
    */
   protected _debug: Debugger;
+
+  /**
+   * Scope for binding resolution
+   */
+  scope: BindingScope = BindingScope.CONTEXT;
 
   /**
    * Create a new context.
@@ -474,6 +484,18 @@ export class Context extends EventEmitter {
     if (this.contains(key)) return this;
     if (this._parent) {
       return this._parent.getOwnerContext(key);
+    }
+    return undefined;
+  }
+
+  /**
+   * Get the context matching the scope
+   * @param scope - Binding scope
+   */
+  getScopedContext(scope: BindingScope): Context | undefined {
+    if (this.scope === scope) return this;
+    if (this._parent) {
+      return this._parent.getScopedContext(scope);
     }
     return undefined;
   }

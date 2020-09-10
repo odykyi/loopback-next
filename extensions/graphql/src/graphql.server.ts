@@ -73,6 +73,7 @@ export class GraphQLServer extends Context implements Server {
     parent?: Context,
   ) {
     super(parent, 'graphql-server');
+    this.scope = BindingScope.SERVER;
     this.expressApp = express();
     if (options.express) {
       for (const p in options.express) {

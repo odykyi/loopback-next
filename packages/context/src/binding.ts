@@ -104,6 +104,27 @@ export enum BindingScope {
    * - req2.get('b1') ==> 0 (always)
    */
   SINGLETON = 'Singleton',
+
+  /**
+   * The following scopes are checked against the context hierarchy to find
+   * the first matching context for a given scope in the chain. Resolved binding
+   * values will be cached and shared on the scoped context. This ensures a
+   * binding to have the same value for the scoped context.
+   */
+  /**
+   * Application scope
+   */
+  APPLICATION = 'Application',
+
+  /**
+   * Server scope
+   */
+  SERVER = 'Server',
+
+  /**
+   * Request scope
+   */
+  REQUEST = 'Request',
 }
 
 /**
@@ -367,8 +388,12 @@ export class Binding<T = BoundValue> extends EventEmitter {
     } else if (this.scope === BindingScope.CONTEXT) {
       // Cache the value at the current context
       this._cache.set(ctx, result);
+    } else if (this.scope === BindingScope.TRANSIENT) {
+      // Do not cache for `TRANSIENT`
+    } else {
+      const scopedCtx = ctx.getScopedContext(this.scope)!;
+      this._cache.set(scopedCtx, result);
     }
-    // Do not cache for `TRANSIENT`
     return result;
   }
 
@@ -400,6 +425,11 @@ export class Binding<T = BoundValue> extends EventEmitter {
     } else if (this.scope === BindingScope.CONTEXT) {
       // Cache the value at the current context
       this._cache.delete(ctx);
+    } else if (this.scope !== BindingScope.TRANSIENT) {
+      const scopedCtx = ctx.getScopedContext(this.scope);
+      if (scopedCtx != null) {
+        this._cache.delete(scopedCtx);
+      }
     }
   }
 
@@ -451,6 +481,21 @@ export class Binding<T = BoundValue> extends EventEmitter {
     if (debug.enabled) {
       debug('Get value for binding %s', this.key);
     }
+
+    // Check if the scope can be resolved first to avoid side effects
+    let scopedCtx: Context | undefined = undefined;
+    switch (this.scope) {
+      case BindingScope.APPLICATION:
+      case BindingScope.SERVER:
+      case BindingScope.REQUEST:
+        scopedCtx = ctx.getScopedContext(this.scope);
+        if (scopedCtx == null) {
+          throw new Error(
+            `Binding scope ${this.scope} cannot be resolved in context ${ctx.name}: ${this.key}`,
+          );
+        }
+    }
+
     // First check cached value for non-transient
     if (this._cache) {
       if (this.scope === BindingScope.SINGLETON) {
@@ -461,6 +506,10 @@ export class Binding<T = BoundValue> extends EventEmitter {
       } else if (this.scope === BindingScope.CONTEXT) {
         if (this._cache.has(ctx)) {
           return this._cache.get(ctx)!;
+        }
+      } else if (this.scope !== BindingScope.TRANSIENT) {
+        if (this._cache.has(scopedCtx!)) {
+          return this._cache.get(scopedCtx!)!;
         }
       }
     }
