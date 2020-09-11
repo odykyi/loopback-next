@@ -211,8 +211,11 @@ We allow a binding to be resolved within a context using one of the following
 scopes:
 
 - BindingScope.TRANSIENT (default)
-- BindingScope.CONTEXT
+- BindingScope.CONTEXT (deprecated to favor APPLICATION/SERVER/REQUEST)
 - BindingScope.SINGLETON
+- BindingScope.APPLICATION
+- BindingScope.SERVER
+- BindingScope.REQUEST
 
 For a complete list of descriptions, please see
 [BindingScope](https://loopback.io/doc/en/lb4/apidocs.context.bindingscope.html).
@@ -379,14 +382,46 @@ To understand the difference between `@bind()/@injectable` and `ctx.bind()`, see
 [Configure binding attributes for a class](#configure-binding-attributes-for-a-class).
 " %}
 
-### Refresh a binding with SINGLETON or CONTEXT scope
+There are some limitation of `SINGLETON`, `CONTEXT`, and `TRANSIENT` scopes.
+Consider the following typical context hierarchy formed by a LoopBack REST
+application:
 
-`SINGLETON` and `CONTEXT` scopes can be used to minimize the number of value
-instances created for a given binding. But sometimes we would like to force
-reloading of a binding when its configuration or dependencies are changed. For
-example, a logging provider can be refreshed to pick up a new logging level. The
-same functionality can be achieved with `TRANSIENT` scope but with much more
-overhead.
+```
+invocationCtx -> requestCtx -> serverCtx -> appCtx
+```
+
+We use `TRANSIENT` scope for controllers/services so that each request will get
+a new instance. But if a controller/service is resolved within the
+`invocationCtx` (by interceptors), a new instance will be created again.
+Ideally, we should get the same instance at the subtree of the `requestCtx`.
+Even worse, resolving a binding twice in the same reqCtx will get two different
+instances too.
+
+Neither `SINGLETON` or `CONTEXT` can satisfy this requirement. Typically,
+controllers/servers are discovered and loaded into the application context.
+Those from components such as RestComponent also contribute bindings to the
+`appCtx` instead of `serverCtx`. With `SINGLETON` scope, we will get one
+instance at the `appCtx` level. With `CONTEXT` scope, we will get one instance
+per context. A set of fine-grained scopes has been introduced to allow better
+scoping of binding resolutions.
+
+- BindingScope.APPLICATION
+- BindingScope.SERVER
+- BindingScope.REQUEST
+
+The scopes above are checked against the context hierarchy to find the first
+matching context for a given scope in the chain. Resolved binding values will be
+cached and shared on the scoped context. This ensures a binding to have the same
+value for the scoped context.
+
+### Refresh a binding with non-transient scopes
+
+`SINGLETON`/`CONTEXT`/`APPLICATION`/`SERVER` scopes can be used to minimize the
+number of value instances created for a given binding. But sometimes we would
+like to force reloading of a binding when its configuration or dependencies are
+changed. For example, a logging provider can be refreshed to pick up a new
+logging level. The same functionality can be achieved with `TRANSIENT` scope but
+with much more overhead.
 
 The `binding.refresh()` method invalidates the cache so that its value will be
 reloaded next time.
