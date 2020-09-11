@@ -477,11 +477,28 @@ export class Context extends EventEmitter {
   }
 
   /**
-   * Get the owning context for a binding key
-   * @param key - Binding key
+   * Get the owning context for a binding or its key
+   * @param keyOrBinding - Binding object or key
    */
-  getOwnerContext(key: BindingAddress): Context | undefined {
-    if (this.contains(key)) return this;
+  getOwnerContext(
+    keyOrBinding: BindingAddress | Readonly<Binding<unknown>>,
+  ): Context | undefined {
+    let key: BindingAddress;
+    if (keyOrBinding instanceof Binding) {
+      key = keyOrBinding.key;
+    } else {
+      key = keyOrBinding as BindingAddress;
+    }
+    if (this.contains(key)) {
+      if (keyOrBinding instanceof Binding) {
+        // Check if the contained binding is the same
+        if (this.registry.get(key.toString()) === keyOrBinding) {
+          return this;
+        }
+        return undefined;
+      }
+      return this;
+    }
     if (this._parent) {
       return this._parent.getOwnerContext(key);
     }
@@ -492,12 +509,53 @@ export class Context extends EventEmitter {
    * Get the context matching the scope
    * @param scope - Binding scope
    */
-  getScopedContext(scope: BindingScope): Context | undefined {
+  getScopedContext(
+    scope:
+      | BindingScope.APPLICATION
+      | BindingScope.SERVER
+      | BindingScope.REQUEST,
+  ): Context | undefined {
     if (this.scope === scope) return this;
     if (this._parent) {
       return this._parent.getScopedContext(scope);
     }
     return undefined;
+  }
+
+  /**
+   * Locate the resolution context for the given binding. Only bindings in the
+   * resolution context and its ancestors are visible as dependencies to resolve
+   * the given binding
+   * @param binding - Binding object
+   */
+  getResolutionContext(
+    binding: Readonly<Binding<unknown>>,
+  ): Context | undefined {
+    switch (binding.scope) {
+      case BindingScope.SINGLETON:
+        // Use the owner context
+        return this.getOwnerContext(binding.key);
+      case BindingScope.TRANSIENT:
+      case BindingScope.CONTEXT:
+        // Use the current context
+        return this;
+      default:
+        // Use the scoped context
+        return this.getScopedContext(binding.scope);
+    }
+  }
+
+  /**
+   * Check if this context is visible (same or ancestor) to the given one
+   * @param ctx - Another context object
+   */
+  isVisibleTo(ctx: Context) {
+    let current: Context | undefined = ctx;
+    while (current != null) {
+      if (current === this) return true;
+      current = current._parent;
+    }
+    return false;
   }
 
   /**

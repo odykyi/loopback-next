@@ -615,6 +615,18 @@ describe('Context', () => {
       expect(ctx.getOwnerContext('foo')).to.equal(ctx);
     });
 
+    it('returns owner context by binding', () => {
+      const binding = ctx.bind('foo').to('bar');
+      expect(ctx.getOwnerContext(binding)).to.equal(ctx);
+    });
+
+    it('returns undefined if the contained binding is not the same', () => {
+      ctx.bind('foo').to('bar');
+      // An orphan binding with the same key
+      const binding = Binding.bind('foo');
+      expect(ctx.getOwnerContext(binding)).to.be.undefined();
+    });
+
     it('returns owner context with parent', () => {
       ctx.bind('foo').to('bar');
       const childCtx = new Context(ctx, 'child');
@@ -622,6 +634,121 @@ describe('Context', () => {
       expect(childCtx.getOwnerContext('foo')).to.equal(ctx);
       expect(childCtx.getOwnerContext('xyz')).to.equal(childCtx);
     });
+  });
+
+  describe('getScopedContext', () => {
+    it('returns scoped context', () => {
+      ctx.scope = BindingScope.APPLICATION;
+      expect(ctx.getScopedContext(BindingScope.APPLICATION)).to.equal(ctx);
+      expect(ctx.getScopedContext(BindingScope.SERVER)).to.be.undefined();
+    });
+
+    it('returns scoped context with parent', () => {
+      ctx.scope = BindingScope.APPLICATION;
+      const childCtx = new Context(ctx, 'child');
+      childCtx.scope = BindingScope.SERVER;
+      expect(childCtx.getScopedContext(BindingScope.APPLICATION)).to.equal(ctx);
+      expect(childCtx.getScopedContext(BindingScope.SERVER)).to.equal(childCtx);
+      expect(childCtx.getScopedContext(BindingScope.REQUEST)).to.be.undefined();
+    });
+  });
+
+  describe('getResolutionContext', () => {
+    let app: Context;
+    let server: Context;
+    let request: Context;
+
+    let bindingInApp: Binding<string>;
+    let bindingInServer: Binding<string>;
+    let bindingInRequest: Binding<string>;
+
+    beforeEach(setupContextChain);
+
+    it('returns resolution context for singleton bindings', () => {
+      setupBindings(BindingScope.SINGLETON);
+      expect(request.getResolutionContext(bindingInRequest)).to.equal(request);
+      expect(request.getResolutionContext(bindingInServer)).to.equal(server);
+      expect(request.getResolutionContext(bindingInApp)).to.equal(app);
+    });
+
+    it('returns resolution context for context bindings', () => {
+      setupBindings(BindingScope.CONTEXT);
+      expect(request.getResolutionContext(bindingInRequest)).to.equal(request);
+      expect(request.getResolutionContext(bindingInServer)).to.equal(request);
+      expect(request.getResolutionContext(bindingInApp)).to.equal(request);
+
+      expect(server.getResolutionContext(bindingInApp)).to.equal(server);
+      expect(app.getResolutionContext(bindingInApp)).to.equal(app);
+    });
+
+    it('returns resolution context for transient bindings', () => {
+      setupBindings(BindingScope.TRANSIENT);
+      expect(request.getResolutionContext(bindingInRequest)).to.equal(request);
+      expect(request.getResolutionContext(bindingInServer)).to.equal(request);
+      expect(request.getResolutionContext(bindingInApp)).to.equal(request);
+
+      expect(server.getResolutionContext(bindingInApp)).to.equal(server);
+      expect(app.getResolutionContext(bindingInApp)).to.equal(app);
+    });
+
+    it('returns resolution context for application bindings', () => {
+      setupBindings(BindingScope.APPLICATION);
+      expect(request.getResolutionContext(bindingInRequest)).to.equal(app);
+      expect(request.getResolutionContext(bindingInServer)).to.equal(app);
+      expect(request.getResolutionContext(bindingInApp)).to.equal(app);
+    });
+
+    it('returns resolution context for server bindings', () => {
+      setupBindings(BindingScope.SERVER);
+      expect(request.getResolutionContext(bindingInRequest)).to.equal(server);
+      expect(request.getResolutionContext(bindingInServer)).to.equal(server);
+      expect(request.getResolutionContext(bindingInApp)).to.equal(server);
+
+      expect(server.getResolutionContext(bindingInApp)).to.equal(server);
+      expect(server.getResolutionContext(bindingInServer)).to.equal(server);
+      expect(app.getResolutionContext(bindingInApp)).to.be.undefined();
+    });
+
+    it('returns resolution context for request bindings', () => {
+      setupBindings(BindingScope.REQUEST);
+      expect(request.getResolutionContext(bindingInRequest)).to.equal(request);
+      expect(request.getResolutionContext(bindingInServer)).to.equal(request);
+      expect(request.getResolutionContext(bindingInApp)).to.equal(request);
+
+      expect(server.getResolutionContext(bindingInServer)).to.be.undefined();
+      expect(server.getResolutionContext(bindingInApp)).to.be.undefined();
+    });
+
+    it('checks visibility', () => {
+      expect(app.isVisibleTo(app)).to.be.true();
+      expect(app.isVisibleTo(server)).to.be.true();
+      expect(app.isVisibleTo(request)).to.be.true();
+      expect(request.isVisibleTo(server)).to.be.false();
+      expect(request.isVisibleTo(app)).to.be.false();
+      expect(app.isVisibleTo(new Context())).to.be.false();
+      expect(new Context().isVisibleTo(app)).to.be.false();
+    });
+
+    function setupContextChain() {
+      app = ctx;
+      app.scope = BindingScope.APPLICATION;
+      server = new Context(app, 'server');
+      server.scope = BindingScope.SERVER;
+      request = new Context(server, 'request');
+      request.scope = BindingScope.REQUEST;
+    }
+
+    function setupBindings(scope: BindingScope) {
+      bindingInApp = app.bind(`app.foo.${scope}`).to('app.bar').inScope(scope);
+      bindingInServer = server
+        .bind(`server.foo.${scope}`)
+        .to('server.bar')
+        .inScope(scope);
+      bindingInRequest = request
+        .bind(`request.foo.${scope}`)
+        .to('request.bar')
+        .inScope(scope);
+    }
   });
 
   describe('get', () => {
@@ -703,6 +830,80 @@ describe('Context', () => {
       const childCtx = new Context(ctx);
       result = await childCtx.get('foo');
       expect(result).to.equal(2);
+    });
+
+    describe('application/server/request scopes', () => {
+      let app: Context;
+      let server: Context;
+      let request: Context;
+
+      let bindingInApp: Binding<string>;
+      let bindingInServer: Binding<string>;
+      let bindingInRequest: Binding<string>;
+
+      beforeEach(setupContextChain);
+
+      it('returns value for application bindings', async () => {
+        setupBindings(BindingScope.APPLICATION);
+        let value = await request.get(bindingInRequest.key, {optional: true});
+        expect(value).to.be.undefined();
+        value = await request.get(bindingInServer.key, {optional: true});
+        expect(value).to.be.undefined();
+        value = await request.get(bindingInApp.key, {optional: true});
+        expect(value).to.eql('app.bar');
+        await expect(request.get(bindingInRequest.key)).to.be.rejectedWith(
+          'Resolution context "app" does not have visibility to binding ' +
+            '"request.foo.Application (scope:Application)" in context "request"',
+        );
+      });
+
+      it('returns value for server bindings', async () => {
+        setupBindings(BindingScope.SERVER);
+        let value = await request.get(bindingInRequest.key, {optional: true});
+        expect(value).to.be.undefined();
+        value = await request.get(bindingInServer.key, {optional: true});
+        expect(value).to.eql('server.bar');
+        value = await request.get(bindingInApp.key, {optional: true});
+        expect(value).to.eql('app.bar');
+        await expect(request.get(bindingInRequest.key)).to.be.rejectedWith(
+          'Resolution context "server" does not have visibility to binding ' +
+            '"request.foo.Server (scope:Server)" in context "request"',
+        );
+      });
+
+      it('returns value for request bindings', async () => {
+        setupBindings(BindingScope.REQUEST);
+        let value = await request.get(bindingInRequest.key, {optional: true});
+        expect(value).to.eql('request.bar');
+        value = await request.get(bindingInServer.key, {optional: true});
+        expect(value).to.eql('server.bar');
+        value = await request.get(bindingInApp.key, {optional: true});
+        expect(value).to.eql('app.bar');
+      });
+
+      function setupContextChain() {
+        app = ctx;
+        app.scope = BindingScope.APPLICATION;
+        server = new Context(app, 'server');
+        server.scope = BindingScope.SERVER;
+        request = new Context(server, 'request');
+        request.scope = BindingScope.REQUEST;
+      }
+
+      function setupBindings(scope: BindingScope) {
+        bindingInApp = app
+          .bind(`app.foo.${scope}`)
+          .to('app.bar')
+          .inScope(scope);
+        bindingInServer = server
+          .bind(`server.foo.${scope}`)
+          .to('server.bar')
+          .inScope(scope);
+        bindingInRequest = request
+          .bind(`request.foo.${scope}`)
+          .to('request.bar')
+          .inScope(scope);
+      }
     });
   });
 
@@ -854,7 +1055,7 @@ describe('Context', () => {
 
     // Cannot be resolved in the app
     expect(() => ctx.getSync('state')).to.throw(
-      /Binding scope Server cannot be resolved in context app/,
+      /Binding "state" in context "app" cannot be resolved in scope "Server"/,
     );
 
     const serverCtx = new Context(ctx);
@@ -884,7 +1085,7 @@ describe('Context', () => {
       .inScope(BindingScope.REQUEST);
 
     expect(() => ctx.getSync('state')).to.throw(
-      /Binding scope Request cannot be resolved in context app/,
+      /Binding "state" in context "app" cannot be resolved in scope "Request"/,
     );
 
     const requestCtx = new Context(ctx);
