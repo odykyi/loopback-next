@@ -46,13 +46,16 @@ class Product {
 
 Design-time property type is not available in the following cases:
 
-- The property has type `undefined`, `null` or a complex type like
-  `Partial<MyModel>`, `string | number`, `string[]`.
+- The property has a type not supported by TypeScript metadata engine:
+  - `undefined`
+  - `null`
+  - complex types like arrays (`string[]`), generic types (`Partial<MyModel>`),
+    union types (`string | number`), and more.
 - The TypeScript project has not enabled the compiler option
   `emitDecoratorMetadata`.
 - The code is written in vanilla JavaScript.
 
-<a id="cannot_infer_property_type-solutions">
+<a id="cannot_infer_property_type-solutions"></a>
 
 ### Solutions
 
