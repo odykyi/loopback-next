@@ -659,6 +659,42 @@ describe('Inspector for design time metadata', () => {
     expect(meta).to.equal(undefined);
   });
 
+  it('returns `undefined` design type for property type `null`', () => {
+    class MyModel {
+      prop: null;
+    }
+
+    const meta = MetadataInspector.getDesignTypeForProperty(MyModel, 'prop');
+    expect(meta).to.equal(undefined);
+  });
+
+  it('returns `undefined` design type for property type `undefined`', () => {
+    class MyModel {
+      prop: undefined;
+    }
+
+    const meta = MetadataInspector.getDesignTypeForProperty(MyModel, 'prop');
+    expect(meta).to.equal(undefined);
+  });
+
+  it('returns `undefined` design type for property type union', () => {
+    class MyModel {
+      prop: string | number;
+    }
+
+    const meta = MetadataInspector.getDesignTypeForProperty(MyModel, 'prop');
+    expect(meta).to.equal(undefined);
+  });
+
+  it('returns `undefined` design type for property type array', () => {
+    class MyModel {
+      prop: string[];
+    }
+
+    const meta = MetadataInspector.getDesignTypeForProperty(MyModel, 'prop');
+    expect(meta).to.equal(undefined);
+  });
+
   it('inspects design time type for the constructor', () => {
     const meta = MetadataInspector.getDesignTypeForMethod(MyController, '');
     expect(meta).to.eql({
